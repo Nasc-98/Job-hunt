@@ -21,7 +21,7 @@ threading.Thread(target=run_web_server, daemon=True).start()
 
 # 2. CONFIGURATION
 # It is better to put these in Render's "Environment Variables" later
-BOT_TOKEN = "7799390812:AAHdWgi0tq2O100RkDqzYB9G8oHvTUzSSZA"
+BOT_TOKEN = "7799390812:AAGyT71IvcB52MHCyEqMtbr_bIylFn2Z3ZI"
 CHAT_ID = "2108985800"
 URL = "https://www.jobbank.gc.ca/jobsearch/jobsearch?searchstring=LMIA&sort=M"
 
