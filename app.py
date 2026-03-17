@@ -13,7 +13,7 @@ seen_jobs = set()
 
 @app.route('/')
 def home():
-    return "OK", 200
+    return "Bot is running perfectly!", 200
 
 def send_tg(msg):
     try:
@@ -24,47 +24,37 @@ def send_tg(msg):
 def check_logic():
     print("Checking Job Bank...")
     try:
-        # Increased timeout to 30 seconds for slow website responses
         res = requests.get(URL, headers=HEADERS, timeout=(5, 30))
-        
-        if res.status_code != 200:
-            print(f"Job Bank busy (Status {res.status_code}).")
-            return
-
-        soup = BeautifulSoup(res.text, "html.parser")
-        articles = soup.find_all("article")
-        
-        for job in articles:
-            link_tag = job.find("a")
-            if link_tag:
-                link = "https://www.jobbank.gc.ca" + link_tag["href"]
-                if link not in seen_jobs:
-                    seen_jobs.add(link)
-                    try:
-                        # Check individual job details
-                        details_res = requests.get(link, headers=HEADERS, timeout=20)
-                        details = details_res.text.lower()
-                        if "candidates with or without a valid canadian work permit" in details:
-                            title = link_tag.text.strip()
-                            send_tg(f"<b>🇨🇦 NEW LMIA JOB</b>\n\n{title}\n<a href='{link}'>Apply Here</a>")
-                    except:
-                        continue
+        if res.status_code == 200:
+            soup = BeautifulSoup(res.text, "html.parser")
+            for job in soup.find_all("article"):
+                link_tag = job.find("a")
+                if link_tag:
+                    link = "https://www.jobbank.gc.ca" + link_tag["href"]
+                    if link not in seen_jobs:
+                        seen_jobs.add(link)
+                        try:
+                            details = requests.get(link, headers=HEADERS, timeout=20).text.lower()
+                            if "candidates with or without a valid canadian work permit" in details:
+                                title = link_tag.text.strip()
+                                send_tg(f"<b>🇨🇦 NEW LMIA JOB</b>\n\n{title}\n<a href='{link}'>Apply Here</a>")
+                        except: continue
     except Exception as e:
         print(f"Scraping error: {e}")
 
 def bot_worker():
-    time.sleep(20) # Wait for Render to settle
-    send_tg("🚀 <b>Bot Updated!</b> Timeout fixes applied.")
+    time.sleep(15) # Brief wait for server stability
+    send_tg("🚀 <b>Bot Online!</b> Port binding fixed.")
     while True:
         check_logic()
-        time.sleep(900) # Wait 15 mins
+        time.sleep(900)
 
-# Start background thread
+# Start background thread immediately
 threading.Thread(target=bot_worker, daemon=True).start()
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
+# DO NOT put the port logic inside an "if __name__" block for Gunicorn
+PORT = int(os.environ.get("PORT", 10000))
+
 
 
 
