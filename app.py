@@ -8,57 +8,80 @@ HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0
 
 URLS = [
     "https://www.jobbank.gc.ca/jobsearch/jobsearch?searchstring=LMIA&sort=M",
-    "https://www.jobbank.gc.ca/jobsearch/jobsearch?searchstring=work+permit&sort=M&fsrc=32"
+    "https://www.jobbank.gc.ca/jobsearch/jobsearch?searchstring=foreign+worker&sort=M"
 ]
 
 def send_tg(msg):
     try:
         requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
-                      data={"chat_id": CHAT_ID, "text": msg, "parse_mode": "HTML", "disable_web_page_preview": False}, timeout=15)
+                      data={"chat_id": CHAT_ID, "text": msg, "parse_mode": "HTML"}, timeout=15)
     except: pass
 
+def get_text_after_label(soup, label_text):
+    """Helper to find data like 'Salary' or 'Education' in the Job Bank page"""
+    try:
+        label = soup.find(lambda tag: tag.name == "span" and label_text in tag.text)
+        if label and label.parent:
+            return label.parent.get_text().replace(label_text, "").strip()
+    except: return "Not listed"
+    return "Not listed"
+
 def check_jobs():
-    print("🚀 Running Styled Universal Filter...")
+    print("🚀 Scanning for detailed International & LMIA Jobs...")
+    processed_links = set()
     for url in URLS:
         try:
             res = requests.get(url, headers=HEADERS, timeout=20)
             soup = BeautifulSoup(res.text, "html.parser")
-            articles = soup.find_all("article")[:25] 
+            articles = soup.find_all("article")[:15] 
             
             for job in articles:
                 link_tag = job.find("a")
                 if link_tag:
                     link = "https://www.jobbank.gc.ca" + link_tag["href"]
+                    if link in processed_links: continue
+                    processed_links.add(link)
+                    
                     try:
-                        detail_res = requests.get(link, headers=HEADERS, timeout=15)
-                        details = detail_res.text.lower()
+                        detail_res = requests.get(link, headers=HEADERS, timeout=12)
+                        detail_soup = BeautifulSoup(detail_res.text, "html.parser")
+                        details_text = detail_res.text.lower()
                         
-                        # --- FILTERS ---
-                        has_phrase = "without a valid canadian work permit" in details
-                        is_lmia = any(x in details for x in ["lmia approved", "positive lmia", "lmia requested"])
-                        is_intl = "can apply to this job" in details
+                        # ELIGIBILITY CHECK: The 'Magic Phrase' from your image
+                        phrase = "without a valid canadian work permit"
+                        if phrase in details_text:
+                            # 1. Title
+                            title = link_tag.text.strip().split('\n')[0].upper()
+                            
+                            # 2. Location (Usually inside a span with class 'city')
+                            loc_tag = job.find("li", class_="location")
+                            location = loc_tag.get_text().strip() if loc_tag else "Canada"
+                            
+                            # 3. Pay / Salary
+                            salary = get_text_after_label(detail_soup, "Salary:")
+                            
+                            # 4. Education
+                            education = get_text_after_label(detail_soup, "Education")
+                            if education == "Not listed": # Alternate check
+                                if "secondary (high) school graduation certificate" in details_text:
+                                    education = "High School Certificate"
+                                elif "no degree, certificate or diploma" in details_text:
+                                    education = "No Degree Required"
 
-                        if has_phrase or is_lmia or is_intl:
-                            title = link_tag.text.strip().split('\n')[0] # Get clean title
-                            
-                            # Determine Status Tag
-                            status = "🌟 WORK PERMIT OPEN" if has_phrase else "🍁 LMIA TRACK"
-                            
-                            # --- STYLED MESSAGE ---
+                            # --- THE STYLED OUTPUT ---
                             message = (
-                                f"<b>{status}</b>\n"
+                                f"<b>🇨🇦 NEW JOB FOUND</b>\n"
                                 f"━━━━━━━━━━━━━━━━━━\n"
-                                f"💼 <b>JOB:</b> <code>{title.upper()}</code>\n"
-                                f"📍 <b>SOURCE:</b> Canada Job Bank\n"
-                                f"✅ <b>STATUS:</b> Verified International\n\n"
-                                f"🔗 <a href='{link}'><b>[ CLICK HERE TO APPLY ]</b></a>\n"
-                                f"━━━━━━━━━━━━━━━━━━"
+                                f"💼 <b>JOB:</b> <code>{title}</code>\n"
+                                f"📍 <b>LOCATION:</b> {location}\n"
+                                f"💰 <b>PAY:</b> {salary}\n"
+                                f"🎓 <b>EDU:</b> {education}\n"
+                                f"━━━━━━━━━━━━━━━━━━\n"
+                                f"🔗 <a href='{link}'><b>[ VIEW & APPLY NOW ]</b></a>\n"
                             )
-                            
                             send_tg(message)
                     except: continue
         except Exception as e: print(f"Error: {e}")
 
 if __name__ == "__main__":
     check_jobs()
-
