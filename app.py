@@ -48,7 +48,7 @@ def check_jobs():
     
     # --- TEST MODE ---
     # Delete the '#' on the line below IF you want a 'Test' message every time it runs.
-    # send_tg("🔄 Scan complete: Bot is still guarding your job hunt!")
+    send_tg("🔄 Scan complete: Bot is still guarding your job hunt!")
 
 if __name__ == "__main__":
     check_jobs()
