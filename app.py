@@ -1,8 +1,9 @@
 import requests
 from bs4 import BeautifulSoup
+from datetime import datetime
 
 # --- CONFIG ---
-TOKEN = "7799390812:AAGyT71IvcB52MHCyEqMtbr_bIylFn2Z3ZI"
+TOKEN = "7799390812:AAHdWgi0tq2O100RkDqzYB9G8oHvTUzSSZA"
 CHAT_ID = "2108985800"
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0"}
 
@@ -18,7 +19,6 @@ def send_tg(msg):
     except: pass
 
 def get_text_after_label(soup, label_text):
-    """Helper to find data like 'Salary' or 'Education' in the Job Bank page"""
     try:
         label = soup.find(lambda tag: tag.name == "span" and label_text in tag.text)
         if label and label.parent:
@@ -27,8 +27,9 @@ def get_text_after_label(soup, label_text):
     return "Not listed"
 
 def check_jobs():
-    print("🚀 Scanning for detailed International & LMIA Jobs...")
-    processed_links = set()
+    print("🚀 Scanning for UNIQUE new jobs...")
+    processed_in_this_run = set()
+    
     for url in URLS:
         try:
             res = requests.get(url, headers=HEADERS, timeout=20)
@@ -39,47 +40,47 @@ def check_jobs():
                 link_tag = job.find("a")
                 if link_tag:
                     link = "https://www.jobbank.gc.ca" + link_tag["href"]
-                    if link in processed_links: continue
-                    processed_links.add(link)
+                    
+                    # Prevent processing the same link twice in the same 10-minute scan
+                    if link in processed_in_this_run: continue
+                    processed_in_this_run.add(link)
                     
                     try:
-                        detail_res = requests.get(link, headers=HEADERS, timeout=12)
-                        detail_soup = BeautifulSoup(detail_res.text, "html.parser")
-                        details_text = detail_res.text.lower()
+                        # 1. Check the date on the search page first
+                        date_tag = job.find("li", class_="date")
+                        date_text = date_tag.get_text().lower() if date_tag else ""
                         
-                        # ELIGIBILITY CHECK: The 'Magic Phrase' from your image
-                        phrase = "without a valid canadian work permit"
-                        if phrase in details_text:
-                            # 1. Title
-                            title = link_tag.text.strip().split('\n')[0].upper()
+                        # ONLY process if it says 'hours ago' or 'minutes ago'
+                        # This stops it from repeating older jobs from 'yesterday'
+                        if "hour" in date_text or "minute" in date_text or "just" in date_text:
                             
-                            # 2. Location (Usually inside a span with class 'city')
-                            loc_tag = job.find("li", class_="location")
-                            location = loc_tag.get_text().strip() if loc_tag else "Canada"
+                            detail_res = requests.get(link, headers=HEADERS, timeout=12)
+                            detail_soup = BeautifulSoup(detail_res.text, "html.parser")
+                            details_text = detail_res.text.lower()
                             
-                            # 3. Pay / Salary
-                            salary = get_text_after_label(detail_soup, "Salary:")
-                            
-                            # 4. Education
-                            education = get_text_after_label(detail_soup, "Education")
-                            if education == "Not listed": # Alternate check
-                                if "secondary (high) school graduation certificate" in details_text:
-                                    education = "High School Certificate"
-                                elif "no degree, certificate or diploma" in details_text:
-                                    education = "No Degree Required"
+                            phrase = "without a valid canadian work permit"
+                            if phrase in details_text:
+                                title = link_tag.text.strip().split('\n').upper()
+                                loc_tag = job.find("li", class_="location")
+                                location = loc_tag.get_text().strip() if loc_tag else "Canada"
+                                salary = get_text_after_label(detail_soup, "Salary:")
+                                education = get_text_after_label(detail_soup, "Education")
 
-                            # --- THE STYLED OUTPUT ---
-                            message = (
-                                f"<b>🇨🇦 NEW JOB FOUND</b>\n"
-                                f"━━━━━━━━━━━━━━━━━━\n"
-                                f"💼 <b>JOB:</b> <code>{title}</code>\n"
-                                f"📍 <b>LOCATION:</b> {location}\n"
-                                f"💰 <b>PAY:</b> {salary}\n"
-                                f"🎓 <b>EDU:</b> {education}\n"
-                                f"━━━━━━━━━━━━━━━━━━\n"
-                                f"🔗 <a href='{link}'><b>[ VIEW & APPLY NOW ]</b></a>\n"
-                            )
-                            send_tg(message)
+                                message = (
+                                    f"<b>✨ FRESH JOB ALERT</b>\n"
+                                    f"━━━━━━━━━━━━━━━━━━\n"
+                                    f"💼 <b>JOB:</b> <code>{title}</code>\n"
+                                    f"📍 <b>LOCATION:</b> {location}\n"
+                                    f"💰 <b>PAY:</b> {salary}\n"
+                                    f"🎓 <b>EDU:</b> {education}\n"
+                                    f"🕒 <b>POSTED:</b> {date_text.capitalize()}\n"
+                                    f"━━━━━━━━━━━━━━━━━━\n"
+                                    f"🔗 <a href='{link}'><b>[ VIEW & APPLY NOW ]</b></a>\n"
+                                )
+                                send_tg(message)
+                                print(f"Sent: {title}")
+                        else:
+                            print(f"Skipping older job: {link}")
                     except: continue
         except Exception as e: print(f"Error: {e}")
 
